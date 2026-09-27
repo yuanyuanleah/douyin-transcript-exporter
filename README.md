@@ -65,10 +65,6 @@
 
 ## 使用范围与验证
 
-本项目免费获取，采用 [CC BY-NC-SA 4.0](LICENSE) 许可，供个人学习与研究使用。请遵守平台规则，使用建议见 [USAGE_NOTES.md](USAGE_NOTES.md)。
-
-发布前已检查文件结构、文档引用、上传脚本语法，并对照本机 lark-cli 帮助核对主要示例命令。手机安装、豆包采集及妙记回退的完整流程尚未实测；建议先用 1 条视频验证。
-
+本项目免费获取，采用 [CC BY-NC-SA 4.0](LICENSE) 许可，供个人学习与研究使用。请遵守平台规则，使用建议见 [USAGE_NOTES.md](USAGE_NOTES.md)
 遇到问题或有改进建议，欢迎在 [Issues](https://github.com/yuanyuanleah/transcript-exporter/issues) 留言。
-
 —— 元元 Leah｜AI × 内容 × 新机会
