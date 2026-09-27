@@ -14,7 +14,7 @@
 
 ## 下载与加载
 
-[下载完整 Skill ZIP](https://github.com/luna6889/douyin-transcript-exporter/archive/refs/heads/main.zip)，解压后将完整 Skill 目录交给豆包工作加载。请同时保留 `SKILL.md` 和 `references/` 下两份文件。
+[下载完整 Skill ZIP](https://github.com/yuanyuanleah/douyin-transcript-exporter/archive/refs/heads/main.zip)，解压后将完整 Skill 目录交给豆包工作加载。请同时保留 `SKILL.md` 和 `references/` 下两份文件。
 
 ## 先试一个小任务
 
