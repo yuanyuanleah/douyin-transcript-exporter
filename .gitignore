@@ -1,0 +1,27 @@
+# macOS / Windows 系统文件
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# 打包产物
+*.zip
+*.tar.gz
+
+# 日志与临时文件
+*.log
+*.tmp
+.~lock.*#
+
+# 本地采集结果与配置
+douyin_data/
+*_progress.json
+*_all_videos_sorted.json
+*_results/
+.env
+.env.*
+!.env.example

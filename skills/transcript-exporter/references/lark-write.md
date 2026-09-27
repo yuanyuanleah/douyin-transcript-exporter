@@ -16,7 +16,7 @@ lark-cli api GET /open-apis/authen/v1/user_info --as user
 3. 两种身份都无目标表格权限时，告知用户需要在飞书文档中添加协作者或切换 lark-cli 登录账号。
 
 ### 版本要求
-- lark-cli 1.0.88+ 支持完整的 base shortcut 命令。
+- 使用支持本文 base shortcut 命令的 lark-cli；运行前通过对应命令的 `--help` 确认参数（发布时已对照本机 1.0.87 核对主要示例）。
 - 查看版本：`lark-cli --version`
 
 ## 表格链接解析
@@ -52,7 +52,7 @@ lark-cli base +field-list --base-token <token> --table-id <id> --as user
 
 ### 字段定义（基础9字段 + AI扩展2字段）
 
-**基础采集字段（9个，从抖音页面直接抓取）：**
+**基础采集字段（9个，从抖音页面直接采集）：**
 
 | 字段名 | 类型 | 说明 |
 |--------|------|------|
@@ -164,10 +164,10 @@ lark-cli base +record-batch-create ... --json @./records.json --as user
 ### 获取已有记录
 ```bash
 lark-cli base +record-list --base-token <token> --table-id <id> \
-  --limit 500 --as user
+  --limit 200 --offset 0 --format json --as user
 ```
 - 返回 `data.data`（二维数组）和 `data.fields`（字段名列表）。
-- 找到"视频链接"字段的索引，提取所有已有视频链接。
+- 找到"视频链接"字段的索引，提取已有视频链接。必须逐页读取直到 `has_more` 为 false；按已读取条数推进 `--offset`，不能只查第一页。分析时同时按账号名称筛选当前博主；多个账号共用表格时不得混算。
 
 ### 去重判断
 ```python
@@ -179,9 +179,9 @@ new_records = [v for v in 采集结果 if v['url'] not in existing_urls]
 
 ### 全量覆盖模式
 用户明确要求"全量覆盖"或"重新导入"时：
-1. 先删除表格中该账号的所有旧记录（按账号名称筛选）。
-2. 再批量写入全部采集结果。
-3. 或者直接追加，由用户自行清理重复数据。
+1. 逐页读取当前账号已有记录，建立视频链接 → record_id 映射。
+2. 已有链接用 `+record-batch-update` 更新同一记录；新链接用 `+record-batch-create` 新增。
+3. 保留本次未采到的旧记录，不删除、不重复追加；若用户另行要求删除，需要明确列出记录范围并确认。
 
 ## 常见错误与恢复
 
@@ -203,21 +203,19 @@ new_records = [v for v in 采集结果 if v['url'] not in existing_urls]
 ### 1. 全量占位符检查
 用 `+record-list` 读取本次新写入的所有记录，检查逐字稿字段：
 ```python
-# 检查是否包含占位符文字
-placeholder_keywords = ["完整内容", "web.fetch", "已通过", "内容已获取", "获取完整"]
+# 只检测整段占位说明，正常口播中出现相同词语不构成失败
+placeholders = {"完整内容已通过web.fetch获取", "完整内容已获取", "内容已获取", "已获取完整内容"}
 for record in new_records:
-    transcript = str(record.get("逐字稿", ""))
-    for kw in placeholder_keywords:
-        if kw in transcript:
-            print(f"⚠️ 发现占位符: {record['标题']} - 包含 '{kw}'")
-            # 必须重新获取该条逐字稿并更新
+    transcript = str(record.get("逐字稿") or "").strip().rstrip("。.!！")
+    if transcript in placeholders:
+        print(f"需要重新获取逐字稿：{record['标题']}")
 ```
-- **发现占位符必须立即修复**：重新调用 web.fetch（分页读取完整内容）或回退妙记链路，然后用 `+record-batch-update` 更新对应记录。
+- 失败最多重试 1 次。仍失败时保留基础数据、缓存失败原因并报告；妙记回退只有用户明确同意下载/转写后才启用。
 
 ### 2. 长度与空值检查
-- 逐字稿字段：非纯音乐/无口播视频应 > 50 字；过短说明可能被截断，需重新获取。
-- 标题/介绍/视频链接/发表日期/账号名称：关键字段不应为空。
-- 点赞/评论/转发：应为数字类型，不能带"万"字。
+- 短正文或末尾无标点只需复核，不能单独判定为缺失。
+- 无口播、用户不要逐字稿或获取失败且有原因时，允许逐字稿为空；原视频未提供介绍或日期时如实留空。
+- 视频链接、账号名称必须正确；互动数保存为整数，未知值留空，不能将缺失值假称为 0。
 
 ### 3. 抽样详细验证
 抽样1-2条记录用 `+record-get` 详细检查：
@@ -232,7 +230,7 @@ lark-cli base +record-get --base-token <token> --table-id <id> \
 - 占位符问题：重新获取完整逐字稿 → 更新记录 → 再次验证。
 - 长度过短：检查是否为纯音乐视频，否则重新获取。
 - 关键字段为空：重新采集该条数据的对应字段。
-- 所有问题修复后，重新执行验证直到全部通过。
+- 每条最多重试 1 次；仍失败时明确报告并继续交付已有数据，不无限循环。
 
 ---
 
@@ -249,7 +247,7 @@ douyin_data/
     ├── 02_{video_id}.md
     ├── 03_{video_id}.md
     ├── ...
-    └── _all.json          （可选，汇总所有数据的 JSON 文件）
+    └── _all.json          （必需，汇总所有数据与状态的 JSON 文件）
 ```
 
 ### 批次目录命名
@@ -263,7 +261,7 @@ douyin_data/
 ### 每个视频的 Markdown 文件
 
 - **文件命名**：`{序号}_{video_id}.md`
-  - 序号按采集顺序（最新在前）从 01 开始，不足10条用1位，超过99条用3位。
+  - 序号按本轮目标顺序（最新模式按日期、Top N 模式按点赞排名）从 01 开始，至少补齐2位，超过99条用3位。
   - 示例：`01_7655189977860862854.md`、`02_7654993145986808761.md`
 
 - **文件内容格式**：
@@ -294,7 +292,7 @@ douyin_data/
 - 章节顺序固定：标题 → 基本信息 → 介绍/文案 → 选题方向 → 主题总结 → 逐字稿。
 - 逐字稿为空时（纯音乐/无口播视频），写"无逐字稿（视频无口播内容）"。
 
-### 汇总 JSON 文件（可选）
+### 汇总 JSON 文件（必需）
 
 在批次目录下同时保存 `_all.json`，包含所有视频的结构化数据，便于后续程序处理：
 
@@ -372,7 +370,7 @@ for i, item in enumerate(data, 1):
     with open(md_path, "w", encoding="utf-8") as f:
         f.write(md_content)
 
-# 保存汇总 JSON（可选）
+# 保存汇总 JSON（必需，供恢复与分析使用）
 json_path = os.path.join(batch_dir, "_all.json")
 with open(json_path, "w", encoding="utf-8") as f:
     json.dump(data, f, ensure_ascii=False, indent=2)
@@ -385,11 +383,11 @@ with open(json_path, "w", encoding="utf-8") as f:
 1. **目录与文件数量检查**：批次目录已创建，Markdown 文件数量 = 预期采集数量。
 2. **文件命名检查**：文件名符合 `{序号}_{video_id}.md` 格式，序号连续无重复。
 3. **Markdown 结构检查**：抽样读取2-3个文件，确认包含所有章节（基本信息、介绍/文案、选题方向、主题总结、逐字稿）。
-4. **占位符检查**：逐字稿部分不包含"完整内容"、"web.fetch"、"已通过"等占位符文字。
-5. **长度检查**：非纯音乐视频的逐字稿 > 50 字；标题、介绍、视频链接、发表日期、账号名称不为空。
+4. **占位符检查**：逐字稿不能仅为占位说明，正常正文包含同名词语时不判失败。
+5. **长度检查**：短正文复核；有记录的无口播、失败或原始信息缺失允许留空，不能反复重试真实缺失值。
 6. **格式检查**：点赞、评论、转发为整数；发表日期格式为 `YYYY-MM-DD HH:MM`；选题方向为1-3个标签。
 
-验证不通过时，重新获取对应数据并更新 Markdown 文件，直到全部通过。
+可恢复错误最多重试 1 次，更新同一 Markdown 文件；仍失败则缓存原因并在交付中报告。
 
 ### 交付文件
 
